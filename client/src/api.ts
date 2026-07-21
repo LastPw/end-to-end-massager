@@ -1,18 +1,39 @@
-const API_BASE =
+export const API_BASE =
   import.meta.env.VITE_API_BASE ||
   (typeof window !== "undefined" && window.location.hostname !== "localhost"
     ? ""
     : "http://localhost:3001");
 
 let authToken: string | null = null;
+let accessExpiresAt: number | null = null;
 let adminToken: string | null = null;
 
-export function setAuthToken(token: string | null): void {
+export function setAuthSession(
+  token: string | null,
+  _refresh: string | null,
+  expiresAt: number | null
+): void {
   authToken = token;
+  accessExpiresAt = expiresAt;
 }
 
 export function setAdminToken(token: string | null): void {
   adminToken = token;
+}
+
+export function getAuthSessionState(): {
+  token: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null;
+} {
+  return { token: authToken, refreshToken: null, expiresAt: accessExpiresAt };
+}
+
+function withCredentials(init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    credentials: "include"
+  };
 }
 
 function authHeaders(): HeadersInit {
@@ -46,18 +67,20 @@ export async function signup(
   }
 ) {
   const response = await fetch(`${API_BASE}/api/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      phone,
-      firstName,
-      lastName,
-      username,
-      password,
-      publicKey,
-      deviceId,
-      deviceName,
-      deviceInfo
+    ...withCredentials({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone,
+        firstName,
+        lastName,
+        username,
+        password,
+        publicKey,
+        deviceId,
+        deviceName,
+        deviceInfo
+      })
     })
   });
 
@@ -81,14 +104,16 @@ export async function login(
   }
 ) {
   const response = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      phone,
-      password,
-      deviceId,
-      deviceName,
-      deviceInfo
+    ...withCredentials({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone,
+        password,
+        deviceId,
+        deviceName,
+        deviceInfo
+      })
     })
   });
 
@@ -97,6 +122,58 @@ export async function login(
   }
 
   return response.json();
+}
+
+export async function refreshSession(deviceId: string) {
+  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    ...withCredentials({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId })
+    })
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Refresh failed");
+  }
+  const data = await response.json();
+  setAuthSession(data.token, null, data.expiresAt);
+  return data;
+}
+
+export async function requestWsTicket() {
+  const response = await fetch(`${API_BASE}/api/auth/ws-ticket`, {
+    ...withCredentials({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      }
+    })
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "WS ticket failed");
+  }
+  return response.json() as Promise<{ ticket: string; expiresAt: number }>;
+}
+
+export async function reportDecryptFailure(details?: {
+  error?: string;
+  sender?: string;
+  senderDeviceId?: number;
+  messageId?: number | string;
+  nonce?: string;
+}) {
+  const response = await fetch(`${API_BASE}/api/metrics/decrypt-failed`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify(details || {})
+  });
+  if (!response.ok) {
+    return;
+  }
 }
 
 export async function fetchPublicKey(username: string) {
@@ -137,6 +214,8 @@ export async function fetchProfile() {
 }
 
 export async function updateProfile(payload: {
+  firstName?: string;
+  lastName?: string;
   avatar?: string | null;
   bio?: string;
   profilePublic?: boolean;
@@ -174,6 +253,7 @@ export async function publishKeyBundle(payload: {
   signedPreKeyId: number;
   signedPreKey: string;
   signedPreKeySig: string;
+  fallbackPublicKey: string;
   oneTimePreKeys: Array<{ id: number; key: string }>;
 }) {
   const response = await fetch(`${API_BASE}/api/keys/publish`, {
@@ -405,6 +485,49 @@ export async function fetchMembers(conversationId: number) {
   return response.json();
 }
 
+export async function fetchConversationSettings(conversationId: number) {
+  const response = await fetch(
+    `${API_BASE}/api/conversations/${conversationId}/settings`,
+    {
+      headers: {
+        ...authHeaders()
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Load settings failed");
+  }
+
+  return response.json();
+}
+
+export async function updateConversationSettings(
+  conversationId: number,
+  payload: {
+    forwardEnabled?: boolean;
+    quietHours?: { enabled: boolean; start: string; end: string } | null;
+  }
+) {
+  const response = await fetch(
+    `${API_BASE}/api/conversations/${conversationId}/settings`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Update settings failed");
+  }
+
+  return response.json();
+}
+
 export async function sendMessage(
   conversationId: number,
   payloads: Array<{
@@ -413,7 +536,8 @@ export async function sendMessage(
     toDeviceId: string;
     ciphertext: string;
     nonce: string;
-  }>
+  }>,
+  forwarded = false
 ) {
   const response = await fetch(`${API_BASE}/api/messages/send`, {
     method: "POST",
@@ -421,7 +545,7 @@ export async function sendMessage(
       "Content-Type": "application/json",
       ...authHeaders()
     },
-    body: JSON.stringify({ conversationId, payloads })
+    body: JSON.stringify({ conversationId, payloads, forwarded })
   });
 
   if (!response.ok) {
@@ -431,13 +555,58 @@ export async function sendMessage(
   return response.json();
 }
 
-export async function pollMessages(since: number, limit = 50) {
-  const response = await fetch(
-    `${API_BASE}/api/messages/poll?since=${since}&limit=${limit}`,
-    {
+export async function scheduleMessage(
+  conversationId: number,
+  scheduledFor: number,
+  payloads: Array<{
+    messageId: string;
+    toUsername: string;
+    toDeviceId: string;
+    ciphertext: string;
+    nonce: string;
+  }>,
+  forwarded = false
+) {
+  const response = await fetch(`${API_BASE}/api/messages/schedule`, {
+    method: "POST",
     headers: {
+      "Content-Type": "application/json",
       ...authHeaders()
+    },
+    body: JSON.stringify({ conversationId, scheduledFor, payloads, forwarded })
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Schedule failed");
+  }
+
+  return response.json();
+}
+
+export async function fetchLinkPreview(url: string) {
+  const response = await fetch(
+    `${API_BASE}/api/link-preview?url=${encodeURIComponent(url)}`,
+    {
+      headers: {
+        ...authHeaders()
+      }
     }
+  );
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Preview failed");
+  }
+
+  return response.json();
+}
+
+export async function pollMessages(since: number, sinceId = 0, limit = 50) {
+  const response = await fetch(
+    `${API_BASE}/api/messages/poll?since=${since}&sinceId=${sinceId}&limit=${limit}`,
+    {
+      headers: {
+        ...authHeaders()
+      }
     }
   );
 
@@ -462,6 +631,25 @@ export async function pollSentStatuses(since: number, limit = 50) {
     throw new Error((await response.json()).error || "Status poll failed");
   }
 
+  return response.json();
+}
+
+export async function fetchMessageHistory(
+  conversationId: number,
+  before: number,
+  limit = 50
+) {
+  const response = await fetch(
+    `${API_BASE}/api/messages/history?conversationId=${conversationId}&before=${before}&limit=${limit}`,
+    {
+      headers: {
+        ...authHeaders()
+      }
+    }
+  );
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "History load failed");
+  }
   return response.json();
 }
 
@@ -498,6 +686,149 @@ export async function deleteMessage(payload: {
 
   if (!response.ok) {
     throw new Error((await response.json()).error || "Delete failed");
+  }
+
+  return response.json();
+}
+
+export async function reportMessage(payload: {
+  conversationId: number;
+  reportedUsername: string;
+  reason: "porn" | "dangerous_link" | "threat" | "abuse";
+  messageId?: number;
+  groupId?: string;
+  evidence?: { text?: string; attachments?: Array<{ name: string; kind: string }> };
+}) {
+  const response = await fetch(`${API_BASE}/api/reports/create`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Report failed");
+  }
+
+  return response.json();
+}
+
+export async function adminSendSystemMessage(payload: {
+  text: string;
+  attachments: Array<{
+    kind: "image" | "audio" | "video" | "file";
+    name: string;
+    data: string;
+    storageKey?: string;
+    contentType?: string;
+  }>;
+}) {
+  const response = await fetch(`${API_BASE}/api/admin/system-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...adminHeaders()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "System message failed");
+  }
+
+  return response.json();
+}
+
+export async function adminUploadDirect(file: File): Promise<{
+  publicUrl: string;
+  contentType: string;
+  key: string;
+}> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/admin/uploads/direct`, {
+    method: "POST",
+    headers: {
+      ...adminHeaders()
+    },
+    body: form
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Admin upload failed");
+  }
+
+  return response.json();
+}
+
+export async function createUpload(payload: {
+  filename: string;
+  contentType: string;
+  size: number;
+}): Promise<{
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  key: string;
+  publicUrl: string;
+}> {
+  const response = await fetch(`${API_BASE}/api/uploads/presign`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Upload init failed");
+  }
+
+  return response.json();
+}
+
+export async function createDownloadUrl(key: string): Promise<{
+  url: string;
+  expiresIn: number;
+}> {
+  const response = await fetch(`${API_BASE}/api/uploads/presign-download`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify({ key })
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Download init failed");
+  }
+
+  return response.json();
+}
+
+export async function uploadDirect(file: File): Promise<{
+  publicUrl: string;
+  contentType: string;
+  key: string;
+}> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/uploads/direct`, {
+    method: "POST",
+    headers: {
+      ...authHeaders()
+    },
+    body: form
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Direct upload failed");
   }
 
   return response.json();
@@ -577,14 +908,218 @@ export async function updateContactPrivacy(payload: {
   return response.json();
 }
 
-export async function enableTwoFactor(password: string) {
-  const response = await fetch(`${API_BASE}/api/auth/2fa/enable`, {
+export async function fetchSocialFeed(params?: {
+  kind?: "post" | "reel";
+  before?: number;
+  limit?: number;
+  sort?: "latest" | "trending";
+}) {
+  const query = new URLSearchParams();
+  if (params?.kind) {
+    query.set("kind", params.kind);
+  }
+  if (params?.before) {
+    query.set("before", String(params.before));
+  }
+  if (params?.limit) {
+    query.set("limit", String(params.limit));
+  }
+  if (params?.sort) {
+    query.set("sort", params.sort);
+  }
+  const response = await fetch(
+    `${API_BASE}/api/social/feed${query.toString() ? `?${query}` : ""}`,
+    {
+      headers: {
+        ...authHeaders()
+      }
+    }
+  );
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Feed load failed");
+  }
+  return response.json();
+}
+
+export async function fetchSocialStories(limit = 20) {
+  const response = await fetch(`${API_BASE}/api/social/stories?limit=${limit}`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Stories load failed");
+  }
+  return response.json();
+}
+
+export async function createSocialPost(payload: {
+  kind: "post" | "reel" | "story";
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  caption?: string;
+  visibility?: "public" | "private";
+  allowedUsers?: string[];
+  commentVisibility?: "public" | "friends";
+  expiresInMinutes?: number;
+  publishAt?: number;
+}) {
+  const response = await fetch(`${API_BASE}/api/social/posts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders()
     },
-    body: JSON.stringify({ password })
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Create post failed");
+  }
+  return response.json();
+}
+
+export async function fetchSocialInsights() {
+  const response = await fetch(`${API_BASE}/api/social/insights`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Insights load failed");
+  }
+  return response.json();
+}
+
+export async function fetchSocialNotifications() {
+  const response = await fetch(`${API_BASE}/api/social/notifications`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Notifications load failed");
+  }
+  return response.json();
+}
+
+export async function toggleSocialLike(postId: number) {
+  const response = await fetch(`${API_BASE}/api/social/posts/${postId}/like`, {
+    method: "POST",
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Like failed");
+  }
+  return response.json();
+}
+
+export async function toggleSocialSave(postId: number) {
+  const response = await fetch(`${API_BASE}/api/social/posts/${postId}/save`, {
+    method: "POST",
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Save failed");
+  }
+  return response.json();
+}
+
+export async function addSocialView(postId: number) {
+  const response = await fetch(`${API_BASE}/api/social/posts/${postId}/view`, {
+    method: "POST",
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "View failed");
+  }
+  return response.json();
+}
+
+export async function fetchSocialComments(postId: number) {
+  const response = await fetch(`${API_BASE}/api/social/posts/${postId}/comments`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Comments load failed");
+  }
+  return response.json();
+}
+
+export async function createSocialComment(postId: number, text: string) {
+  const response = await fetch(`${API_BASE}/api/social/posts/${postId}/comments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify({ text })
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Comment failed");
+  }
+  return response.json();
+}
+
+export async function followSocialUser(username: string) {
+  const response = await fetch(`${API_BASE}/api/social/follow`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify({ username })
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Follow failed");
+  }
+  return response.json();
+}
+
+export async function unfollowSocialUser(username: string) {
+  const response = await fetch(`${API_BASE}/api/social/unfollow`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify({ username })
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Unfollow failed");
+  }
+  return response.json();
+}
+
+export async function fetchSocialFollows() {
+  const response = await fetch(`${API_BASE}/api/social/follows`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Follows load failed");
+  }
+  return response.json();
+}
+
+export async function enableTwoFactor(password: string) {
+  const response = await fetch(`${API_BASE}/api/auth/2fa/enable`, {
+    ...withCredentials({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      },
+      body: JSON.stringify({ password })
+    })
   });
 
   if (!response.ok) {
@@ -596,12 +1131,14 @@ export async function enableTwoFactor(password: string) {
 
 export async function disableTwoFactor(password: string) {
   const response = await fetch(`${API_BASE}/api/auth/2fa/disable`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders()
-    },
-    body: JSON.stringify({ password })
+    ...withCredentials({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      },
+      body: JSON.stringify({ password })
+    })
   });
 
   if (!response.ok) {
@@ -627,11 +1164,13 @@ export async function listDevices() {
 
 export async function logoutDevice(deviceId: string) {
   const response = await fetch(`${API_BASE}/api/devices/${deviceId}/logout`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders()
-    }
+    ...withCredentials({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      }
+    })
   });
 
   if (!response.ok) {
@@ -643,11 +1182,13 @@ export async function logoutDevice(deviceId: string) {
 
 export async function logoutAllDevices() {
   const response = await fetch(`${API_BASE}/api/devices/logout-all`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders()
-    }
+    ...withCredentials({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      }
+    })
   });
 
   if (!response.ok) {
@@ -666,6 +1207,99 @@ export async function adminLogin(username: string, password: string) {
 
   if (!response.ok) {
     throw new Error((await response.json()).error || "Admin login failed");
+  }
+
+  return response.json();
+}
+
+export async function adminListAdmins() {
+  const response = await fetch(`${API_BASE}/api/admin/admins`, {
+    headers: {
+      ...adminHeaders()
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Admin list failed");
+  }
+
+  return response.json();
+}
+
+export async function adminCreateAdmin(payload: {
+  username: string;
+  password: string;
+  role?: "super" | "standard";
+  permissions?: string[];
+}) {
+  const response = await fetch(`${API_BASE}/api/admin/admins`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...adminHeaders()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Admin create failed");
+  }
+
+  return response.json();
+}
+
+export async function adminUpdateAdminPermissions(payload: {
+  adminId: number;
+  permissions: string[];
+}) {
+  const response = await fetch(
+    `${API_BASE}/api/admin/admins/${payload.adminId}/permissions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...adminHeaders()
+      },
+      body: JSON.stringify({ permissions: payload.permissions })
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Admin update failed");
+  }
+
+  return response.json();
+}
+
+export async function adminGetLockdown() {
+  const response = await fetch(`${API_BASE}/api/admin/settings/lockdown`, {
+    headers: {
+      ...adminHeaders()
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Lockdown fetch failed");
+  }
+
+  return response.json();
+}
+
+export async function adminSetLockdown(payload: {
+  enabled: boolean;
+  allowConversationIds?: number[];
+}) {
+  const response = await fetch(`${API_BASE}/api/admin/settings/lockdown`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...adminHeaders()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Lockdown update failed");
   }
 
   return response.json();
@@ -770,6 +1404,23 @@ export async function adminListConversations() {
 
   if (!response.ok) {
     throw new Error((await response.json()).error || "List conversations failed");
+  }
+
+  return response.json();
+}
+
+export async function adminListBlockedEvents(limit = 200) {
+  const response = await fetch(
+    `${API_BASE}/api/admin/blocked?limit=${limit}`,
+    {
+      headers: {
+        ...adminHeaders()
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error((await response.json()).error || "Blocked list failed");
   }
 
   return response.json();

@@ -1,0 +1,377 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model users {
+  id                Int     @id @default(autoincrement())
+  username          String  @unique
+  phone             String
+  first_name        String
+  last_name         String
+  password_hash     String
+  password_salt     String
+  two_factor_enabled Boolean
+  public_key        String
+  created_at        Int
+  failed_login_count Int
+  locked_until      Int?
+  banned            Boolean
+  can_send          Boolean
+  can_create        Boolean
+  avatar            String?
+  bio               String?
+  profile_public    Boolean
+  allow_direct      Boolean
+  allow_group_invite Boolean
+  privacy_defaults  String
+  privacy_overrides String
+
+  sessions          sessions[]
+  memberships       memberships[]
+  owned_conversations conversations[]
+  sent_messages     messages[]         @relation("sender")
+  received_messages messages[]         @relation("recipient")
+  key_bundles       user_key_bundles[]
+  invites           invites[]          @relation("invite_creator")
+  social_posts      social_posts[]
+  social_likes      social_likes[]
+  social_saves      social_saves[]
+  social_views      social_views[]
+  social_comments   social_comments[]
+  social_followers  social_follows[]   @relation("follower")
+  social_following  social_follows[]   @relation("following")
+  social_notifications social_notifications[] @relation("notification_owner")
+  social_actions    social_notifications[] @relation("notification_actor")
+  reports_filed     reports[]          @relation("reporter")
+  reports_against   reports[]          @relation("reported")
+  scheduled_batches scheduled_messages[]
+  profile           user_profiles?
+  blocked_events    blocked_events[]
+  uploaded_files    uploaded_files[]
+}
+
+model sessions {
+  token_hash   String @id
+  user_id      Int
+  device_id    String
+  device_name  String
+  ip           String
+  last_seen_at Int
+  created_at   Int
+  access_expires_at Int
+  refresh_token_hash String
+  refresh_expires_at Int
+  rotated_at   Int
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([access_expires_at])
+}
+
+model conversations {
+  id          Int    @id @default(autoincrement())
+  type        String
+  name        String?
+  owner_id    Int
+  visibility  String
+  forward_enabled Boolean @default(true)
+  quiet_hours String?
+  created_at  Int
+
+  owner       users         @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  memberships memberships[]
+  messages    messages[]
+  invites     invites[]
+  scheduled   scheduled_messages[]
+  reports     reports[]
+  blocked_events blocked_events[]
+
+  @@index([owner_id])
+}
+
+model memberships {
+  id              Int   @id @default(autoincrement())
+  conversation_id Int
+  user_id         Int
+  role            String
+  permissions     String?                           
+
+  conversation conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user         users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([conversation_id, user_id])
+  @@index([user_id])
+}
+
+model messages {
+  id                 Int    @id @default(autoincrement())
+  group_id           String
+  conversation_id    Int
+  sender_id          Int
+  sender_device_id   String
+  recipient_id       Int
+  recipient_device_id String
+  ciphertext         String
+  nonce              String
+  size_bytes         Int
+  created_at         Int
+  delivered_at       Int?
+  read_at            Int?
+  deleted_at         Int?
+  deleted_by         Int?
+
+  conversation conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender       users         @relation("sender", fields: [sender_id], references: [id], onDelete: Cascade)
+  recipient    users         @relation("recipient", fields: [recipient_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+  @@index([recipient_id, created_at])
+  @@index([sender_id, created_at])
+}
+
+model scheduled_messages {
+  id              Int    @id @default(autoincrement())
+  conversation_id Int
+  sender_id       Int
+  sender_device_id String
+  scheduled_for   Int
+  created_at      Int
+  payloads        String
+
+  conversation conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender       users         @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+}
+
+model reports {
+  id              Int    @id @default(autoincrement())
+  reporter_id     Int
+  reported_user_id Int
+  conversation_id Int
+  message_id      Int?
+  group_id        String?
+  reason          String
+  evidence        String?
+  created_at      Int
+  status          String
+  reviewed_at     Int?
+  action          String?
+
+  reporter     users         @relation("reporter", fields: [reporter_id], references: [id], onDelete: Cascade)
+  reported     users         @relation("reported", fields: [reported_user_id], references: [id], onDelete: Cascade)
+  conversation conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+}
+
+model user_key_bundles {
+  id               Int    @id @default(autoincrement())
+  user_id          Int
+  session_device_id String
+  registration_id  Int
+  device_id        Int
+  identity_key     String
+  signed_prekey_id Int
+  signed_prekey    String
+  signed_prekey_sig String
+  fallback_public_key String @default("")
+  one_time_prekeys String
+  updated_at       Int
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, session_device_id])
+}
+
+model invites {
+  id              Int    @id @default(autoincrement())
+  conversation_id Int
+  token           String @unique
+  max_uses        Int
+  uses            Int
+  expires_at      Int?
+  created_by      Int
+  created_at      Int
+  revoked         Boolean
+
+  conversation conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  creator      users         @relation("invite_creator", fields: [created_by], references: [id], onDelete: Cascade)
+}
+
+model social_posts {
+  id                 Int    @id @default(autoincrement())
+  user_id            Int
+  kind               String
+  media_url          String
+  media_type         String
+  caption            String?
+  tags               String?
+  visibility         String
+  allowed_user_ids   String
+  comment_visibility String
+  created_at         Int
+  publish_at         Int?
+  expires_at         Int?
+
+  user          users                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  likes         social_likes[]
+  saves         social_saves[]
+  views         social_views[]
+  comments      social_comments[]
+  notifications social_notifications[]
+}
+
+model social_likes {
+  id        Int @id @default(autoincrement())
+  post_id   Int
+  user_id   Int
+  created_at Int
+
+  post social_posts @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([post_id, user_id])
+}
+
+model social_saves {
+  id        Int @id @default(autoincrement())
+  post_id   Int
+  user_id   Int
+  created_at Int
+
+  post social_posts @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([post_id, user_id])
+}
+
+model social_views {
+  id        Int @id @default(autoincrement())
+  post_id   Int
+  user_id   Int
+  created_at Int
+
+  post social_posts @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model social_comments {
+  id        Int @id @default(autoincrement())
+  post_id   Int
+  user_id   Int
+  text      String
+  created_at Int
+
+  post social_posts @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model social_follows {
+  id           Int @id @default(autoincrement())
+  follower_id  Int
+  following_id Int
+  created_at   Int
+
+  follower  users @relation("follower", fields: [follower_id], references: [id], onDelete: Cascade)
+  following users @relation("following", fields: [following_id], references: [id], onDelete: Cascade)
+
+  @@unique([follower_id, following_id])
+}
+
+model social_notifications {
+  id         Int    @id @default(autoincrement())
+  user_id    Int
+  actor_id   Int
+  post_id    Int?
+  type       String
+  created_at Int
+  seen_at    Int?
+
+  user  users        @relation("notification_owner", fields: [user_id], references: [id], onDelete: Cascade)
+  actor users        @relation("notification_actor", fields: [actor_id], references: [id], onDelete: Cascade)
+  post  social_posts? @relation(fields: [post_id], references: [id], onDelete: SetNull)
+}
+
+model blocked_events {
+  id             Int    @id @default(autoincrement())
+  conversation_id Int
+  user_id        Int
+  reason         String
+  metadata       String?
+  created_at     Int
+
+  user          users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  conversation  conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id])
+  @@index([user_id])
+  @@index([created_at])
+}
+
+model admin_credentials {
+  id            Int    @id @default(autoincrement())
+  username      String
+  password_hash String
+  password_salt String
+  created_at    Int
+  updated_at    Int
+}
+
+model admin_sessions {
+  token_hash  String @id
+  admin_id    Int
+  created_at  Int
+  expires_at  Int
+
+  admin admin_users @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  @@index([admin_id])
+  @@index([expires_at])
+}
+
+model admin_users {
+  id            Int    @id @default(autoincrement())
+  username      String @unique
+  password_hash String
+  password_salt String
+  role          String
+  permissions   String
+  created_at    Int
+  updated_at    Int
+
+  sessions admin_sessions[]
+}
+
+model app_settings {
+  key        String @id
+  value      String
+  updated_at Int
+}
+
+model user_profiles {
+  id               Int    @id @default(autoincrement())
+  user_id          Int    @unique
+  username         String
+  last_ip          String
+  last_user_agent  String
+  last_platform    String
+  last_language    String
+  last_device_model String
+  last_seen_at     Int
+  history          String
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model uploaded_files {
+  key          String @id
+  owner_user_id Int
+  content_type String
+  created_at   Int
+
+  owner users @relation(fields: [owner_user_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_user_id, created_at])
+}

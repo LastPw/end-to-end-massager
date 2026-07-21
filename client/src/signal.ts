@@ -16,7 +16,6 @@ import {
   importSignalStore
 } from "./signalStore";
 
-const DEVICE_ID = 1;
 const PREKEY_BATCH = 30;
 
 const contextCache = new Map<string, SignalContext>();
@@ -34,6 +33,7 @@ type LocalKeyBundle = {
   signedPreKeyId: number;
   signedPreKey: string;
   signedPreKeySig: string;
+  fallbackPublicKey: string;
   oneTimePreKeys: Array<{ id: number; key: string }>;
 };
 
@@ -45,7 +45,14 @@ type DeviceBundle = {
   signedPreKeyId: number;
   signedPreKey: string;
   signedPreKeySig: string;
+  fallbackPublicKey?: string;
   oneTimePreKey?: { id: number; key: string } | null;
+};
+
+type FallbackCiphertext = {
+  ephemeralPublicKey: string;
+  iv: string;
+  ciphertext: string;
 };
 
 const encoder = new TextEncoder();
@@ -86,6 +93,101 @@ function base64ToBinary(value: string): string {
   return Buffer.from(value, "base64").toString("binary");
 }
 
+async function ensureFallbackKeyPair(
+  context: SignalContext,
+  force: boolean
+): Promise<{ publicKey: string; privateKey: string }> {
+  let publicKey = await context.store.getMeta("fallbackPublicKey");
+  let privateKey = await context.store.getMeta("fallbackPrivateKey");
+  if (!publicKey || !privateKey || force) {
+    const pair = await crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveKey"]
+    );
+    publicKey = toBase64(await crypto.subtle.exportKey("spki", pair.publicKey));
+    privateKey = toBase64(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    await context.store.setMeta("fallbackPublicKey", publicKey);
+    await context.store.setMeta("fallbackPrivateKey", privateKey);
+  }
+  return { publicKey, privateKey };
+}
+
+async function encryptFallback(
+  recipientPublicKey: string,
+  plaintext: string
+): Promise<FallbackCiphertext> {
+  const recipientKey = await crypto.subtle.importKey(
+    "spki",
+    fromBase64(recipientPublicKey),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    []
+  );
+  const ephemeral = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveKey"]
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: "ECDH", public: recipientKey },
+    ephemeral.privateKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoder.encode(plaintext)
+  );
+  return {
+    ephemeralPublicKey: toBase64(
+      await crypto.subtle.exportKey("spki", ephemeral.publicKey)
+    ),
+    iv: toBase64(iv.buffer),
+    ciphertext: toBase64(encrypted)
+  };
+}
+
+async function decryptFallback(
+  context: SignalContext,
+  fallback: FallbackCiphertext
+): Promise<string> {
+  const privateKeyRaw = await context.store.getMeta("fallbackPrivateKey");
+  if (!privateKeyRaw) {
+    throw new Error("Fallback private key missing");
+  }
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    fromBase64(privateKeyRaw),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    ["deriveKey"]
+  );
+  const ephemeralPublicKey = await crypto.subtle.importKey(
+    "spki",
+    fromBase64(fallback.ephemeralPublicKey),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    []
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: "ECDH", public: ephemeralPublicKey },
+    privateKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64(fallback.iv) },
+    key,
+    fromBase64(fallback.ciphertext)
+  );
+  return decoder.decode(plaintext);
+}
+
 function serializeKeyPair(keyPair: KeyPairType): string {
   return JSON.stringify({
     pub: toBase64(keyPair.pubKey),
@@ -102,7 +204,7 @@ function parseKeyPair(raw: string): KeyPairType {
 }
 
 function randomId(): number {
-  return Math.floor(Math.random() * (2 ** 31 - 1));
+  return Math.floor(Math.random() * (2 ** 31 - 2)) + 1;
 }
 
 function createStorage(store: SignalStore): StorageType {
@@ -255,6 +357,13 @@ export async function ensureLocalKeys(
   force: boolean
 ): Promise<LocalKeyBundle | null> {
   const context = await getContext(username);
+  let signalDeviceIdRaw = await context.store.getMeta("signalDeviceId");
+  if (!signalDeviceIdRaw) {
+    signalDeviceIdRaw = String(randomId());
+    await context.store.setMeta("signalDeviceId", signalDeviceIdRaw);
+  }
+  const signalDeviceId = Number(signalDeviceIdRaw);
+  const fallbackKeyPair = await ensureFallbackKeyPair(context, force);
   const { identityKeyPair, registrationId } = await ensureIdentityKeys(
     context,
     force
@@ -269,8 +378,22 @@ export async function ensureLocalKeys(
     await resetPreKeys(context.store);
   }
 
-  const preKeys = [];
-  for (let i = 0; i < PREKEY_BATCH; i += 1) {
+  const storedPreKeyIdsRaw = await context.store.getMeta("preKeyIds");
+  const storedPreKeyIds = storedPreKeyIdsRaw
+    ? (JSON.parse(storedPreKeyIdsRaw) as number[])
+    : [];
+  const preKeys: Array<{ id: number; key: string }> = [];
+
+  if (!force) {
+    for (const keyId of storedPreKeyIds) {
+      const keyPair = await context.storage.loadPreKey(keyId);
+      if (keyPair) {
+        preKeys.push({ id: keyId, key: toBase64(keyPair.pubKey) });
+      }
+    }
+  }
+
+  while (preKeys.length < PREKEY_BATCH) {
     const keyId = randomId();
     const preKey = await KeyHelper.generatePreKey(keyId);
     await context.storage.storePreKey(keyId, preKey.keyPair);
@@ -286,12 +409,21 @@ export async function ensureLocalKeys(
   return {
     identityKey: toBase64(identityKeyPair.pubKey),
     registrationId,
-    deviceId: DEVICE_ID,
+    deviceId: signalDeviceId,
     signedPreKeyId,
     signedPreKey: toBase64(signedPreKey.keyPair.pubKey),
     signedPreKeySig: toBase64(signedPreKey.signature),
+    fallbackPublicKey: fallbackKeyPair.publicKey,
     oneTimePreKeys: preKeys
   };
+}
+
+export async function hasLocalKeys(username: string): Promise<boolean> {
+  const context = await getContext(username);
+  const identityKeyPair = await context.store.getMeta("identityKeyPair");
+  const registrationId = await context.store.getMeta("registrationId");
+  const signedPreKeyId = await context.store.getMeta("signedPreKeyId");
+  return Boolean(identityKeyPair && registrationId && signedPreKeyId);
 }
 
 export async function ensureSession(
@@ -332,16 +464,29 @@ export async function encryptSignalMessage(
   localUsername: string,
   remoteUsername: string,
   deviceId: number,
-  plaintext: string
+  plaintext: string,
+  fallbackPublicKey?: string
 ): Promise<{ ciphertext: string; nonce: string }> {
   const context = await getContext(localUsername);
   const address = new SignalProtocolAddress(remoteUsername, deviceId || 1);
   const cipher = new SessionCipher(context.storage, address);
   const message = await cipher.encrypt(encoder.encode(plaintext).buffer);
   const body = message.body || "";
+  const signalCiphertext = binaryToBase64(body);
+  if (!fallbackPublicKey) {
+    return {
+      ciphertext: signalCiphertext,
+      nonce: `signal:v1:${message.type}`
+    };
+  }
+  const fallback = await encryptFallback(fallbackPublicKey, plaintext);
   return {
-    ciphertext: binaryToBase64(body),
-    nonce: `signal:v1:${message.type}`
+    ciphertext: JSON.stringify({
+      v: 2,
+      signal: signalCiphertext,
+      fallback
+    }),
+    nonce: `signal:v2:${message.type}`
   };
 }
 
@@ -361,6 +506,16 @@ export async function importSignalState(
   await importSignalStore(data);
 }
 
+export async function resetSignalSession(
+  localUsername: string,
+  remoteUsername: string,
+  deviceId: number
+): Promise<void> {
+  const context = await getContext(localUsername);
+  const address = new SignalProtocolAddress(remoteUsername, deviceId || 1);
+  await context.store.deleteSession(address.toString());
+}
+
 export async function decryptSignalMessage(
   localUsername: string,
   remoteUsername: string,
@@ -374,7 +529,28 @@ export async function decryptSignalMessage(
   const typeRaw = nonce.split(":")[2] || "1";
   const parsedType = Number(typeRaw);
   const type = parsedType === 3 ? 3 : 1;
-  const binary = base64ToBinary(ciphertext);
+  let signalCiphertext = ciphertext;
+  let fallback: FallbackCiphertext | undefined;
+  if (nonce.startsWith("signal:v2:")) {
+    const parsed = JSON.parse(ciphertext) as {
+      v?: number;
+      signal: string;
+      fallback?: FallbackCiphertext;
+    };
+    if (
+      parsed.v !== 2 ||
+      typeof parsed.signal !== "string" ||
+      !parsed.fallback ||
+      typeof parsed.fallback.ephemeralPublicKey !== "string" ||
+      typeof parsed.fallback.iv !== "string" ||
+      typeof parsed.fallback.ciphertext !== "string"
+    ) {
+      throw new Error("Invalid encrypted message payload");
+    }
+    signalCiphertext = parsed.signal;
+    fallback = parsed.fallback;
+  }
+  const binary = base64ToBinary(signalCiphertext);
   try {
     const plaintext =
       type === 3
@@ -383,11 +559,20 @@ export async function decryptSignalMessage(
     return decoder.decode(new Uint8Array(plaintext));
   } catch (error) {
     // Fallback to the other decrypt mode for mixed/legacy traffic.
-    const fallback =
-      type === 3
-        ? await cipher.decryptWhisperMessage(binary, "binary")
-        : await cipher.decryptPreKeyWhisperMessage(binary, "binary");
-    return decoder.decode(new Uint8Array(fallback));
+    try {
+      const alternatePlaintext =
+        type === 3
+          ? await cipher.decryptWhisperMessage(binary, "binary")
+          : await cipher.decryptPreKeyWhisperMessage(binary, "binary");
+      return decoder.decode(new Uint8Array(alternatePlaintext));
+    } catch (fallbackError) {
+      if (fallback) {
+        return decryptFallback(context, fallback);
+      }
+      // A duplicate or out-of-order delivery must not destroy the ratchet
+      // session. The caller keeps the ciphertext and can retry later.
+      throw fallbackError;
+    }
   }
 }
 

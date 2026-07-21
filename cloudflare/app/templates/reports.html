@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security Reports</title>
+    <style>
+      :root {
+        --bg: #f2efe9;
+        --ink: #1c1c1c;
+        --accent: #3d405b;
+        --card: #ffffff;
+        --muted: #6b6b6b;
+      }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(135deg, #f2efe9 0%, #f7f1e1 45%, #e9ecef 100%);
+      }
+      header {
+        padding: 32px 24px 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 26px;
+      }
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 0 24px 40px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        margin-bottom: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        font-size: 13px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Security Reports</h1>
+      <div class="muted">
+        Scanner detections and suspicious probes ·
+        <a href="/reports/hourly.pdf">Hourly PDF</a> ·
+        <a href="/admin">Dashboard</a>
+      </div>
+    </header>
+    <div class="container">
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>IP</th>
+              <th>Path</th>
+              <th>User-Agent</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody id="reportRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      async function fetchReports() {
+        const res = await fetch("/api/reports");
+        return res.json();
+      }
+
+      function render(items) {
+        const rows = items
+          .map((item) => {
+            const ts = new Date(item.ts_ms).toLocaleString();
+            return `
+            <tr>
+              <td>${escapeHtml(ts)}</td>
+              <td>${escapeHtml(item.report_type)}</td>
+              <td>${escapeHtml(item.client_ip)}</td>
+              <td>${escapeHtml(item.path)}</td>
+              <td>${escapeHtml(item.user_agent)}</td>
+              <td>${escapeHtml(item.detail)}</td>
+            </tr>
+          `;
+          })
+          .join("");
+        document.getElementById("reportRows").innerHTML = rows;
+      }
+
+      async function init() {
+        const data = await fetchReports();
+        render(data.items || []);
+      }
+
+      init();
+      setInterval(init, 5000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Experiment Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg: #f2efe9;
+        --ink: #1c1c1c;
+        --accent: #3d405b;
+        --card: #ffffff;
+        --muted: #6b6b6b;
+      }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(135deg, #f2efe9 0%, #f7f1e1 45%, #e9ecef 100%);
+      }
+      header {
+        padding: 32px 24px 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 26px;
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 24px 40px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        margin-bottom: 16px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .metric {
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Experiment Report</h1>
+      <div class="muted">Evaluation metrics from the latest run</div>
+    </header>
+    <div class="container">
+      <div class="grid" id="metrics"></div>
+      <div class="card">
+        <canvas id="metricChart" height="140"></canvas>
+      </div>
+      <div class="card muted">
+        Run the evaluation script to refresh results: <code>python ml/evaluate.py</code>
+      </div>
+      <div class="card">
+        <a href="/reports/eval">Download evaluation report</a>
+      </div>
+      <div class="card">
+        <a href="/admin">Back to Dashboard</a>
+      </div>
+    </div>
+
+    <script>
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      async function fetchEval() {
+        const res = await fetch("/api/eval");
+        return res.json();
+      }
+
+      function renderMetrics(data) {
+        const metrics = [
+          { label: "Samples", value: data.samples },
+          { label: "Accuracy", value: data.accuracy.toFixed(3) },
+          { label: "Precision", value: data.precision.toFixed(3) },
+          { label: "Recall", value: data.recall.toFixed(3) },
+          { label: "F1", value: data.f1.toFixed(3) },
+          { label: "ROC-AUC", value: data.roc_auc.toFixed(3) },
+        ];
+        const container = document.getElementById("metrics");
+        container.innerHTML = metrics
+          .map(
+            (item) => `
+          <div class="card">
+            <div class="muted">${escapeHtml(item.label)}</div>
+            <div class="metric">${escapeHtml(item.value)}</div>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      function renderChart(data) {
+        const ctx = document.getElementById("metricChart");
+        new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: ["Accuracy", "Precision", "Recall", "F1", "ROC-AUC"],
+            datasets: [
+              {
+                label: "Score",
+                data: [
+                  data.accuracy,
+                  data.precision,
+                  data.recall,
+                  data.f1,
+                  data.roc_auc,
+                ],
+                backgroundColor: "#3d405b",
+              },
+            ],
+          },
+          options: {
+            scales: {
+              y: { beginAtZero: true, max: 1 },
+            },
+            plugins: {
+              legend: { display: false },
+            },
+          },
+        });
+      }
+
+      async function init() {
+        const data = await fetchEval();
+        renderMetrics(data);
+        renderChart(data);
+      }
+
+      init();
+    </script>
+  </body>
+</html>

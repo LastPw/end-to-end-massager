@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bot Management</title>
+    <style>
+      :root {
+        --bg: #f2efe9;
+        --ink: #1c1c1c;
+        --accent: #3d405b;
+        --card: #ffffff;
+        --muted: #6b6b6b;
+      }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(135deg, #f2efe9 0%, #f7f1e1 45%, #e9ecef 100%);
+      }
+      header {
+        padding: 32px 24px 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 26px;
+      }
+      .container {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 0 24px 40px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      input {
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        width: 120px;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bot Management</h1>
+      <div class="muted">
+        Adjust risk thresholds · <a href="/admin">Dashboard</a>
+      </div>
+    </header>
+    <div class="container">
+      <div class="card">
+        <div class="row">
+          <label>Challenge Threshold</label>
+          <input id="challenge" type="number" step="0.01" min="0" max="1" />
+        </div>
+        <div class="row" style="margin-top: 8px">
+          <label>Block Threshold</label>
+          <input id="block" type="number" step="0.01" min="0" max="1" />
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <button onclick="savePolicy()">Save</button>
+        </div>
+        <div class="muted" id="status"></div>
+      </div>
+    </div>
+
+    <script>
+      async function loadPolicy() {
+        const res = await fetch("/api/bot-policy");
+        const data = await res.json();
+        document.getElementById("challenge").value =
+          data.items.challenge_threshold ?? 0.5;
+        document.getElementById("block").value = data.items.block_threshold ?? 0.8;
+      }
+
+      async function savePolicy() {
+        const challenge_threshold = parseFloat(
+          document.getElementById("challenge").value
+        );
+        const block_threshold = parseFloat(document.getElementById("block").value);
+        const res = await fetch("/api/bot-policy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ challenge_threshold, block_threshold }),
+        });
+        const data = await res.json();
+        document.getElementById("status").textContent =
+          data.status === "ok" ? "Saved." : "Error: " + data.message;
+      }
+
+      loadPolicy();
+    </script>
+  </body>
+</html>

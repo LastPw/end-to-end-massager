@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Checking your browser...</title>
+    <style>
+      body {
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background: #f2efe9;
+        color: #1c1c1c;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+      }
+      .box {
+        background: #fff;
+        padding: 24px 32px;
+        border-radius: 16px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      }
+      .muted {
+        color: #6b6b6b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div>Checking your browser before accessing the site.</div>
+      <div class="muted">This is an automatic check. Please wait...</div>
+    </div>
+    <script>
+      function solve() {
+        const ts = {{ ts }};
+        const token = "{{ token }}";
+        return { ts, token };
+      }
+
+      async function verify() {
+        const payload = solve();
+        const res = await fetch("/api/js-challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.status === "pass") {
+          location.href = "/";
+        } else {
+          document.body.innerHTML = "<div class='box'>Verification failed.</div>";
+        }
+      }
+
+      setTimeout(verify, 2000);
+    </script>
+  </body>
+</html>

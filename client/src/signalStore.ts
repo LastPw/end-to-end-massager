@@ -151,6 +151,10 @@ export class SignalStore {
     await setItem(this.key("session", keyId), value);
   }
 
+  async deleteSession(keyId: string): Promise<void> {
+    await deleteItem(this.key("session", keyId));
+  }
+
   async getPreKey(preKeyId: number): Promise<string | null> {
     return getItem(this.key("prekey", preKeyId));
   }

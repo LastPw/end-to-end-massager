@@ -6,15 +6,31 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "migrate:json": "tsx scripts/migrate-json-to-sqlite.ts",
+    "backup:db": "tsx scripts/backup-db.ts",
+    "test": "node --test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.540.0",
+    "@aws-sdk/s3-request-presigner": "^3.540.0",
     "@fastify/cors": "^8.5.0",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/multipart": "^8.2.0",
     "@fastify/rate-limit": "^9.1.0",
-    "fastify": "^4.26.2"
+    "@fastify/websocket": "^10.0.1",
+    "@prisma/client": "^5.22.0",
+    "fastify": "^4.26.2",
+    "file-type": "^19.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.11.20",
+    "@types/ws": "^8.5.10",
+    "prisma": "^5.22.0",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }
