@@ -6,3 +6,5 @@ server/profiles/
 client/.vite/
 server/prisma/*.db
 server/prisma/*.db.*
+*cloudflare/
+*.github/
