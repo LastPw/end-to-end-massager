@@ -1,38 +1,20 @@
 # Dependencies
 node_modules/
 
-# Build outputs
+# Build output
 dist/
 build/
-out/
+client/dist/
 
-# Environment variables
+# Database
+*.db
+*.db-journal
+server/data/
+
+# Environment files
 .env
 .env.local
 .env.*.local
-
-# Database
-server/data.json
-server/profiles/
-server/prisma/*.db
-server/prisma/*.db-*
-server/prisma/*.db.*
-server/prisma/*.sqlite
-server/prisma/*.sqlite-*
-
-# Vite / Client
-client/.vite/
-client/dist/
-client/node_modules/
-
-# Cloudflare (اگه پوشه خاصیه)
-cloudflare/
-.cloudflare/
-
-# GitHub
-.github/
-.gitignore
-.gitattributes
 
 # IDE
 .vscode/
@@ -44,9 +26,22 @@ cloudflare/
 # OS
 .DS_Store
 Thumbs.db
-*.log
 
-# Temporary files
-tmp/
-temp/
-*.tmp
+# Logs
+*.log
+npm-debug.log*
+
+# Prisma generated
+server/prisma/generated/
+
+# Cloudflare / Security Gateway (separate project)
+cloudflare/
+
+# GitHub CI workflows (separate)
+.github/
+
+# Uploads (local filesystem)
+server/uploads/
+
+# Coverage
+coverage/

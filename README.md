@@ -1,16 +1,14 @@
 <div align="center">
 
-# 📱 Messager — End-to-End Encrypted Messenger
+# 📱 Masseger — پیام‌رسان رمزنگاری‌شده سرتاسر
 
-**A full-stack, privacy-first messaging platform with Signal-grade encryption, social features, and an ML-powered security gateway.**
+**A full-stack, end-to-end encrypted messenger with Signal-grade encryption, social features, and privacy-first design.**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=fff)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=fff)](https://fastify.dev/)
 [![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=fff)](https://www.prisma.io/)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=fff)](https://vite.dev/)
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=fff)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -19,9 +17,7 @@
 
 ## 📋 Overview
 
-**Messager** is a privacy-first, end-to-end encrypted messaging platform. Messages are encrypted in the browser before ever reaching the server — the server stores only ciphertext and never sees plaintext content.
-
-The project also includes a **Smart Security Gateway** — a research-grade reverse proxy with ML-assisted threat detection, behavioral analysis, and DDoS protection.
+**Masseger** is a privacy-first, end-to-end encrypted messaging platform. Messages are encrypted in the browser before ever reaching the server — the server stores only ciphertext and never sees plaintext content.
 
 ### ✨ Key Features
 
@@ -102,23 +98,6 @@ The project also includes a **Smart Security Gateway** — a research-grade reve
 - **Key backup/restore** — Export and import Signal key state
 </details>
 
-<details>
-<summary><strong>🔬 Smart Security Gateway (Research)</strong></summary>
-
-- **Reverse proxy** — Upstream IP hiding with behavior-based security
-- **Behavioral fingerprinting** — Mouse, click, and keystroke analysis
-- **ML decision engine** — Isolation Forest + Random Forest classifiers
-- **Invisible JS challenges** — No CAPTCHA required for human verification
-- **DDoS protection** — Adaptive guard with global & per-IP rate monitoring
-- **WAF engine** — SQLi/XSS pattern detection with dashboard controls
-- **Bot detection** — Scanner/distributed bot management with score headers
-- **Geo/IP reputation** — Country-based allow/block policies
-- **Honeypot traps** — Attacker detection via decoy endpoints
-- **Admin dashboard** — Real-time stats, reports, and configuration
-- **Domain verification** — TXT record validation for origin checks
-- **Hourly PDF reports** — Automated security summaries
-</details>
-
 ---
 
 ## 🏗️ Architecture
@@ -151,15 +130,6 @@ The project also includes a **Smart Security Gateway** — a research-grade reve
 │              │   Prisma ORM + SQLite/Postgres               │
 │              └─────────────────────────────┘                 │
 └─────────────────────────────────────────────────────────────┘
-
-(Optional) ┌─────────────────────────────────────────────────┐
-            │   Smart Security Gateway (Python/FastAPI)       │
-            │   Acting as a reverse proxy in front of server │
-            │   - Behavioral analysis                         │
-            │   - ML threat detection                         │
-            │   - DDoS protection                             │
-            │   - WAF + Bot management                        │
-            └─────────────────────────────────────────────────┘
 ```
 
 ### Encryption Flow
@@ -226,18 +196,6 @@ The project also includes a **Smart Security Gateway** — a research-grade reve
 | **WebSocket API** | Real-time communication |
 | **IndexedDB** | Local message caching |
 
-### Security Gateway (`cloudflare/`)
-
-| Technology | Purpose |
-|---|---|
-| **Python 3.10+** | Runtime |
-| **FastAPI** | Web framework |
-| **scikit-learn** | ML models (Isolation Forest, Random Forest) |
-| **httpx** | Async HTTP client |
-| **Jinja2** | Template rendering |
-| **ReportLab** | PDF report generation |
-| **dnspython** | DNS verification |
-
 ---
 
 ## 🚀 Quick Start
@@ -246,7 +204,6 @@ The project also includes a **Smart Security Gateway** — a research-grade reve
 
 - Node.js 18+
 - npm
-- Python 3.10+ (for the security gateway)
 - SQLite (default) or PostgreSQL
 
 ### 1. Clone & Install Dependencies
@@ -257,14 +214,8 @@ cd server
 npm install
 
 # Client
-cd ../client
+cd client
 npm install
-
-# (Optional) Security Gateway
-cd ../cloudflare
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment
@@ -274,7 +225,7 @@ pip install -r requirements.txt
 set APP_MASTER_KEY=your-strong-random-key-here
 
 # Server (optional - defaults to SQLite)
-set DATABASE_URL=postgresql://user:password@localhost:5432/messager
+set DATABASE_URL=postgresql://user:password@localhost:5432/masseger
 ```
 
 ### 3. Database Setup
@@ -299,21 +250,6 @@ npm run dev
 
 Open **http://localhost:5173** in your browser.
 
-### 5. (Optional) Run the Security Gateway
-
-```bash
-cd cloudflare
-
-# Train ML models
-python ml/train.py
-
-# Start gateway (pointing to your server)
-set UPSTREAM_BASE_URL=http://localhost:3001
-uvicorn app.main:app --reload --port 8000
-```
-
-Visit **http://localhost:8000** to access the application through the gateway.
-
 ---
 
 ## 🧪 Testing
@@ -326,15 +262,12 @@ npm test
 # Client tests
 cd client
 npm test
-
-# CI (both apps)
-# See .github/workflows/ci.yml
 ```
 
 ## 📂 Project Structure
 
 ```
-messager/
+masseger/
 ├── client/                    # React frontend
 │   ├── src/
 │   │   ├── main.tsx           # Entry point
@@ -362,35 +295,8 @@ messager/
 │   │   └── schema.prisma      # Database schema
 │   ├── tests/                 # Server tests
 │   └── tsconfig.json
-├── cloudflare/                # Smart Security Gateway (research)
-│   ├── app/
-│   │   ├── main.py            # FastAPI application & routes
-│   │   ├── config.py          # Environment configuration
-│   │   ├── security.py        # Security policy engine
-│   │   ├── ddos.py            # Adaptive DDoS guard
-│   │   ├── ratelimit.py       # Sliding window rate limiter
-│   │   ├── behavior.py        # Behavioral fingerprinting
-│   │   ├── domains.py         # Domain verification
-│   │   ├── metrics.py         # Real-time metrics collection
-│   │   ├── reporting.py       # PDF report generation
-│   │   ├── session_state.py   # Session state management
-│   │   ├── storage.py         # Data persistence
-│   │   ├── templates/         # Jinja2 HTML templates
-│   │   └── static/            # Static assets (behavior.js)
-│   ├── ml/                    # Machine learning pipeline
-│   │   ├── train.py           # Model training
-│   │   ├── generate_dataset.py  # Synthetic data generation
-│   │   ├── evaluate.py        # Model evaluation
-│   │   └── report.py          # Evaluation report generation
-│   ├── models/                # Trained model files & docs
-│   ├── docs/                  # Documentation
-│   ├── scripts/               # Traffic/behavior simulation
-│   └── requirements.txt
-├── .github/workflows/         # CI configuration
 ├── install.sh                 # Automated setup script
-├── FAIR_USE.md                # Fair use policy
-├── PRIVACY.md                 # Privacy policy
-├── TERMS.md                   # Terms of service
+├── RUN_GUIDE.md               # Full Persian setup guide
 └── README.md                  # This file
 ```
 
@@ -499,21 +405,15 @@ Access the admin panel by navigating to `/#admin` in the application (not shown 
 
 - **User management** — Ban/unban, flag accounts, view profiles & IP logs
 - **Conversation management** — View, delete, and moderate conversations
-- **Report queue** — Review and act on user reports (porn, dangerous links, threats, abuse)
+- **Report queue** — Review and act on user reports
 - **System messages** — Broadcast messages to all users
-- **Global lockdown** — Emergency mode to restrict platform access to allowlisted conversations
-- **Admin accounts** — Role-based access (super/standard) with granular permissions
+- **Global lockdown** — Emergency mode to restrict platform access
+- **Admin accounts** — Role-based access with granular permissions
 - **Metrics** — Server request/error/latency monitoring
-
-### Default Admin Credentials
-
-The first admin user is auto-created on first request. **Set a strong password immediately.**
 
 ---
 
 ## 🗄️ Database Schema
-
-The database uses **SQLite by default** (production-ready with PostgreSQL). Key models:
 
 | Table | Purpose |
 |---|---|
@@ -535,67 +435,7 @@ The database uses **SQLite by default** (production-ready with PostgreSQL). Key 
 
 ---
 
-## ☁️ Security Gateway Setup
-
-The Smart Security Gateway is a **separate research prototype** that acts as a reverse proxy in front of your application. See the [full gateway documentation](cloudflare/README.md) for details.
-
-### Quick Setup
-
-```bash
-cd cloudflare
-
-# Train ML models
-python ml/train.py
-
-# Generate evaluation dataset & report
-python ml/generate_dataset.py
-python ml/evaluate.py
-python ml/report.py
-
-# Start example upstream (port 8080)
-uvicorn examples.upstream:app --port 8080
-
-# Start gateway (port 8000)
-set UPSTREAM_BASE_URL=http://localhost:8080
-uvicorn app.main:app --reload --port 8000
-```
-
-### Traffic Simulation
-
-```bash
-# Human-like traffic
-python scripts/traffic_sim.py --scenario human
-
-# Bot-like traffic
-python scripts/traffic_sim.py --scenario bot
-
-# Reconnaissance simulation
-python scripts/traffic_sim.py --scenario recon
-
-# Brute force simulation
-python scripts/traffic_sim.py --scenario bruteforce
-```
-
----
-
 ## 📊 Operations & Monitoring
-
-### Logging
-
-- **Structured JSON logs** — All requests logged with `X-Request-Id` correlation
-- **Log levels** — Configurable via Fastify logger settings
-
-### Metrics Endpoint
-
-```
-GET /api/admin/metrics
-```
-
-Returns:
-- Total requests
-- Error count
-- Decrypt failure count
-- Average latency (ms)
 
 ### Backup
 
@@ -641,7 +481,7 @@ For large file uploads, configure S3/R2-compatible storage:
 |---|---|
 | Key Agreement | ECDH P-256 (Web Crypto API) |
 | Message Encryption | AES-256-GCM |
-| Signal Protocol | X3DH + Double Ratchet (`@privacyresearch/libsignal-protocol-typescript`) |
+| Signal Protocol | X3DH + Double Ratchet |
 | Session Establishment | PreKey bundles with one-time prekeys |
 | Password Hashing | scrypt (32-byte salt) |
 | Key Fingerprinting | SHA-256 |
@@ -656,7 +496,6 @@ For large file uploads, configure S3/R2-compatible storage:
 | Brute force login | Account lockout after 5 attempts, rate limiting |
 | XSS | CSP `script-src 'self'`, no `dangerouslySetInnerHTML` |
 | CSRF | Credentials via `Authorization` header, not cookies |
-| DDoS | Rate limiting, optional security gateway with adaptive DDoS guard |
 
 ### Security Checklist (Production)
 
@@ -666,11 +505,8 @@ For large file uploads, configure S3/R2-compatible storage:
 - [ ] Rotate admin credentials
 - [ ] Enable **HSTS** (`APP_HSTS=1`)
 - [ ] Configure **S3/R2 object storage** for attachments
-- [ ] Add **CSRF protection** if using cookie-based auth
 - [ ] Enable **2FA** for all admin accounts
-- [ ] Use **separate admin domain** with additional access controls
 - [ ] Configure **database backups**
-- [ ] Review **X-Forwarded-For** trust configuration
 
 ---
 
@@ -681,7 +517,7 @@ For large file uploads, configure S3/R2-compatible storage:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3001` | Server port |
-| `DATABASE_URL` | `file:./data/messager.db` | Database connection string |
+| `DATABASE_URL` | `file:./data/masseger.db` | Database connection string |
 | `APP_MASTER_KEY` | *(required)* | Encryption-at-rest key |
 | `APP_HSTS` | `0` | Enable HSTS (`1`) |
 | `APP_CONNECT_SRC` | — | Additional CSP connect-src origins |
@@ -699,23 +535,6 @@ For large file uploads, configure S3/R2-compatible storage:
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_BASE` | `http://localhost:3001` | API base URL (empty = same origin) |
-
-### Security Gateway
-
-| Variable | Default | Description |
-|---|---|---|
-| `UPSTREAM_BASE_URL` | `http://localhost:8080` | Upstream server |
-| `SESSION_COOKIE_NAME` | `sgw_session` | Session cookie name |
-| `CHALLENGE_SECRET` | `change-me` | Challenge signing key |
-| `CHALLENGE_TTL_SECONDS` | `120` | Challenge validity |
-| `MAX_REQ_PER_MINUTE` | `120` | Per-session rate limit |
-| `MAX_REQ_PER_MINUTE_IP` | `300` | Per-IP rate limit |
-| `UNDER_ATTACK_MODE` | `0` | Enable JS challenge mode |
-| `ALLOWLIST_IPS`/`BLOCKLIST_IPS` | — | IP access control lists |
-| `DDOS_GLOBAL_RPM` | `3000` | Global DDoS threshold |
-| `DDOS_IP_RPM` | `600` | Per-IP DDoS threshold |
-| `MODEL_DIR` | `models` | ML model directory |
-| `DATA_DB_PATH` | `data/behavior.db` | Behavior data store |
 
 ---
 
@@ -748,5 +567,5 @@ Contributions are welcome! Please ensure:
 ---
 
 <div align="center">
-  <sub>Built with ❤️ for privacy and security research.</sub>
+  <sub>Built with ❤️ for privacy and secure communication.</sub>
 </div>
