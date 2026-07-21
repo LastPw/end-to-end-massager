@@ -1,6 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-data/behavior.db
-models/*.joblib
-data/eval.json

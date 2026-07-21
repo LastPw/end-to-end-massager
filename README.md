@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📱 Masseger — پیام‌رسان رمزنگاری‌شده سرتاسر
+# 📱 Masseger — End-to-end encrypted 
 
 **A full-stack, end-to-end encrypted messenger with Signal-grade encryption, social features, and privacy-first design.**
 
